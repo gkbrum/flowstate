@@ -1,5 +1,5 @@
 from functools import lru_cache
-from fastapi import FastAPI, Depends, Cookie, Request
+from fastapi import FastAPI, Depends, Cookie, Request, HTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.responses import RedirectResponse
 from app.core import config 
@@ -12,6 +12,15 @@ def get_settings():
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=get_settings().api_secret_token)
+
+#função para extrair os tokens de acesso e refresh
+def get_current_user_tokens(request: Request):
+    tokens = request.session.get("spotify-tokens")
+    
+    if tokens is None:
+        raise HTTPException(status_code=303, headers={"Location": "http://127.0.0.1:8000"})
+    
+    return tokens     
 
 @app.get("/login")
 def login(_settings=Depends(get_settings)):
@@ -48,3 +57,13 @@ def callback(state: str,
         request.session["spotify-tokens"] = tokens
         
         return RedirectResponse(url="/playlists", status_code=303)
+    
+@app.get("/playlists")
+def playlists(
+        tokens=Depends(get_current_user_tokens),
+        settings=Depends(get_settings)
+    ):
+    
+    sp = spotify_service.SpotifyDataService(tokens, settings)
+    
+    return sp.get_user_playlists()
